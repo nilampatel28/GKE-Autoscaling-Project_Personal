@@ -1,0 +1,35 @@
+Application: Video Queue Monitoring & Processing Service
+
+Description:
+A simulated video processing application that monitors and processes uploaded videos through a queue system.
+
+It consists of:
+
+A Compute Engine instance called video-queue-monitor running a Go (Golang) application,
+which generates a custom Cloud Monitoring metric:
+
+custom.googleapis.com/opencensus/my.videoservice.org/measure/input_queue_size
+
+
+→ This metric represents the length of the video input queue — the number of videos waiting to be processed.
+
+A GKE cluster running a video processing deployment (pods that pick up and process items from the queue).
+Autoscaling strategies (HPA, VPA, Cluster Autoscaler, NAP) were applied to this deployment to ensure it scales dynamically based on:
+
+CPU utilization (HPA)
+
+Recommended resource limits (VPA)
+
+Cluster-level node scaling (Cluster Autoscaler)
+
+Dynamic node pool creation (Node Auto-Provisioning)
+
+
+
+Purpose
+
+The application was used to simulate a real-world workload where:
+
+Video uploads create variable demand, and
+
+Autoscaling must ensure that the queue is processed efficiently while minimizing idle resource cost.
