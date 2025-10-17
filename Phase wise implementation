@@ -1,0 +1,144 @@
+Commands Used:
+gcloud auth list
+gcloud config list project
+
+
+gcloud config set compute/zone us-east1-d
+gcloud container clusters create scaling-demo --num-nodes=3 --enable-vertical-pod-autoscaling
+
+
+=============================================================================================================================================================
+
+Phase 1:  Provision testing environment
+Create php-apache deploymen.yaml
+kubectl apply -f php-apache.yaml
+kubectl get deployment
+
+OUTPUT:
+NAME        READY        UP-TO-DATE        AVAILABLE     AGE
+php-apache  3/3          3                 3             91s
+
+
+=============================================================================================================================================================
+
+
+Phase 2: Scale pods with Horizontal Pod Autoscaling
+
+OUTPUT: 
+NAME        READY        UP-TO-DATE        AVAILABLE     AGE
+php-apache  3/3          3                 3             91s
+
+
+Now Apply horizontal autoscaling to the php-apache deployment:
+kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10
+kubectl get hpa
+
+Result :he autoscaler will scale the deployment down to the minimum number of pods indicated when you run the autoscale command.
+Horizontal Pod Autoscaling takes 5-10 minutes and will require shutting down or starting new pods depending on which way it's scaling.
+
+=============================================================================================================================================================
+
+
+Phase 3: Scale size of pods with Vertical Pod Autoscaling
+
+gcloud container clusters describe scaling-demo | grep ^verticalPodAutoscaling -A 1
+utput reads enabled: true
+
+kubectl create deployment hello-server --image=gcr.io/google-samples/hello-app:1.0
+kubectl set resources deployment hello-server --requests=cpu=450m
+kubectl describe pod hello-server | sed -n "/Containers:$/,/Conditions:/p"
+Create
+
+kubectl apply -f hello-vpa.yaml
+kubectl describe vpa hello-server-vpa
+
+
+Notice VPA is recommending the CPU request for this 
+container be set to 25m instead of the previous 100m as well as giving you a suggested number for how much memory should be requested. At this point, 
+these recommendations can be manually applied to the hello-server deployment.
+
+sed -i 's/Off/Auto/g' hello-vpa.yaml
+kubectl apply -f hello-vpa.yaml
+
+n order to resize a pod, Vertical Pod Autoscaler will need to delete that pod and recreate it with the new size. By default, to avoid downtime, VPA will not delete and resize the last active pod. Because of this, you will need at least 2 replicas to see VPA make any changes.
+
+Scale hello-server deployment to 2 replicas:
+kubectl scale deployment hello-server --replicas=2
+Copied!
+Now, watch your pods:
+kubectl get pods -w
+
+hello-server-xxx pods in the terminating or pending status (or navigate to Kubernetes Engine > Workloads):
+This is a sign that your VPA is deleting and resizing your pods. Once you see this
+Output : pods getting deleted
+
+
+=============================================================================================================================================================
+
+Phase 4:  HPA results
+kubectl get hpa
+The HPA takes advantage of the fact that the app is inactive right now and removes all the unused resources. Furthermore, 
+if more demand were placed on the php-apache app, it would scale back up to account for the load.
+
+
+=============================================================================================================================================================
+
+
+Phase 5: VPA results
+Inspect pods:
+kubectl describe pod hello-server | sed -n "/Containers:$/,/Conditions:/p"
+
+OUTPUT:
+Requests:
+  cpu:       25m
+  memory:    262144k
+
+
+=============================================================================================================================================================
+
+Phase 6: Cluster autoscaler
+Enable autoscaling for your cluster:
+gcloud beta container clusters update scaling-demo --enable-autoscaling --min-nodes 1 --max-nodes 5
+
+Switch to the optimize-utilization autoscaling profile so that the full effects of scaling can be observed:
+gcloud beta container clusters update scaling-demo \
+--autoscaling-profile optimize-utilization
+
+Verify:kubectl get deployment -n kube-system
+
+create the Pod Disruption Budgets for each of your kube-system pods:
+
+RESULT:
+Cluster Autoscaler removed an unnecessary node, Vertical Pod Autoscaling and Horizontal Pod Autoscaling helped reduce enough CPU demand so that the node was no longer needed. Combining these tools is a great way to optimize your overall costs and resource usage.
+
+So, the cluster autoscaler helps add and remove nodes in response to pods needing to be scheduled.
+However, GKE specifically has another feature to scale vertically, called node auto-provisioning.
+
+
+=============================================================================================================================================================
+
+Phase 7: Enable Node Auto Provisioning:
+gcloud container clusters update scaling-demo \
+    --enable-autoprovisioning \
+    --min-cpu 1 \
+    --min-memory 2 \
+    --max-cpu 45 \
+    --max-memory 160
+
+=============================================================================================================================================================
+
+
+Phase 8: est with larger demand
+kubectl run -i --tty load-generator --rm --image=busybox --restart=Never -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://php-apache; done"
+kubectl get hpa
+kubectl get deployment php-apache
+
+=============================================================================================================================================================
+Phase 9: Optimize larger loads
+
+Create a manifest for a pause pod:
+New node is created, most likely in a new node pool, to fit our newly created pause pod. Now, if we were to run the load test again,
+when we needed an extra node for your php-apache deployment, it could be scheduled on the node with our pause pod while our pause pod is instead put on a new node. 
+Dummy pause pods allow our cluster to provision a new node in advance so that your actual application can scale up much faster. 
+
+
