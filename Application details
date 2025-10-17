@@ -2,7 +2,18 @@ Application: Video Queue Monitoring & Processing Service
 
 Description:
 A simulated video processing application that monitors and processes uploaded videos through a queue system.
+precompiled Go binary, not the source code.
 
+This binary’s job is to:
+
+Read the video queue length from a mock source
+
+Export a custom metric to Cloud Monitoring:
+
+custom.googleapis.com/opencensus/my.videoservice.org/measure/input_queue_size
+
+
+The startup script runs this binary automatically on boot to simulate a live metric stream.
 It consists of:
 
 A Compute Engine instance called video-queue-monitor running a Go (Golang) application,
